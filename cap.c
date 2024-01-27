@@ -93,7 +93,7 @@ int check_cvs_version(int req_major, int req_minor, int req_extra)
     if (!client_version[0])
     {
 	if (cvs_direct_ctx)
-	    cvs_version(cvs_direct_ctx, client_version, server_version);
+	    cvs_version(cvs_direct_ctx, client_version, server_version, BUFSIZ, BUFSIZ);
 	else
 	    get_version_external();
     }
@@ -121,19 +121,11 @@ int check_version_string(const char * str, int req_major, int req_minor, int req
 	return 0;
     }
 
-    /* We might have encountered a FreeBSD system which
-     * has a mucked up version string of:
-     *  Concurrent Versions System (CVS) '1.11.17'-FreeBSD (client/server)
-     * so re-test just in case
-     */
     p += skip;
     if (sscanf(p, "%d.%d.%d", &major, &minor, &extra) != 3)
     {	
-        if (sscanf(p, "'%d.%d.%d'", &major, &minor, &extra) != 3)
-	{
-		debug(DEBUG_APPMSG1, "WARNING: malformed CVS version: %s", str);
-		return 0;
-	}
+	debug(DEBUG_APPMSG1, "WARNING: malformed CVS version: %s", str);
+	return 0;
     }
 
     return (major > req_major || 

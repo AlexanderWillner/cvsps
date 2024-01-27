@@ -108,18 +108,9 @@ time_t read_cache()
     int tag_flags = 0;
     char branchbuff[LOG_STR_MAX] = "";
     int branch_add = 0;
-    int logbufflen = LOG_STR_MAX + 1;
-    char * logbuff = malloc(logbufflen);
+    char logbuff[LOG_STR_MAX] = "";
     time_t cache_date = -1;
     int read_version;
-
-    if (logbuff == NULL)
-    {
-	debug(DEBUG_SYSERROR, "could not malloc %d bytes for logbuff in read_cache", logbufflen);
-	exit(1);
-    }
-
-    logbuff[0] = 0;
 
     if (!(fp = cache_open("r")))
 	goto out;
@@ -308,19 +299,8 @@ time_t read_cache()
 	    else
 	    {
 		/* Make sure we have enough in the buffer */
-		int len = strlen(buff);
-		if (strlen(logbuff) + len >= LOG_STR_MAX)
-		{
-		    logbufflen += (len >= LOG_STR_MAX ? (len+1) : LOG_STR_MAX);
-		    char * newlogbuff = realloc(logbuff, logbufflen);
-		    if (newlogbuff == NULL)
-		    {
-			debug(DEBUG_SYSERROR, "could not realloc %d bytes for logbuff in read_cache", logbufflen);
-			exit(1);
-		    }
-		    logbuff = newlogbuff;
-		}
-		strcat(logbuff, buff);
+		if (strlen(logbuff)+strlen(buff)<LOG_STR_MAX)
+		    strcat(logbuff, buff);
 	    }
 	    break;
 	case CACHE_NEED_PS_MEMBERS:
@@ -352,7 +332,6 @@ time_t read_cache()
  out_close:
     fclose(fp);
  out:
-    free(logbuff);
     return cache_date;
 }
 
@@ -365,7 +344,7 @@ enum
     CR_BRANCH_POINT
 };
 
-static void parse_cache_revision(PatchSetMember * psm, const char * buff)
+static void parse_cache_revision(PatchSetMember * psm, const char * p_buff)
 {
     /* The format used to generate is:
      * "file:%s; pre_rev:%s; post_rev:%s; dead:%d; branch_point:%d\n"
@@ -375,37 +354,35 @@ static void parse_cache_revision(PatchSetMember * psm, const char * buff)
     char post[REV_STR_MAX];
     int dead = 0;
     int bp = 0;
+    char buff[BUFSIZ];
     int state = CR_FILENAME;
-    const char *sep;
-    char * p;
-    char * c;
+    const char *s;
+    char * p = buff;
 
-    for (p = buff, sep = buff;			  /* just ensure sep is non-NULL */
-	 (sep != NULL) && (c = strchr(p, ':'));
-	 p = sep + 1)
+    strcpy(buff, p_buff);
+
+    while ((s = strsep(&p, ";")))
     {
-	size_t len;
-	sep = strchr(c, ';');
-	c++;
+	char * c = strchr(s, ':');
 
-	if (sep != NULL)
-	    len = sep - c;
-	else /* last field in the cache line */
-	    len = strlen(c);
+	if (!c)
+	{
+	    debug(DEBUG_APPERROR, "invalid cache revision line '%s'|'%s'", p_buff, s);
+	    exit(1);
+	}
+
+	*c++ = 0;
 
 	switch(state)
 	{
 	case CR_FILENAME:
-	    memcpy(filename, c, len);
-	    filename[len] = '\0';
+	    strcpy(filename, c);
 	    break;
 	case CR_PRE_REV:
-	    memcpy(pre, c, len);
-	    pre[len] = '\0';
+	    strcpy(pre, c);
 	    break;
 	case CR_POST_REV:
-	    memcpy(post, c, len);
-	    post[len] = '\0';
+	    strcpy(post, c);
 	    break;
 	case CR_DEAD:
 	    dead = atoi(c);
